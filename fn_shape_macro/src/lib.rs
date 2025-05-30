@@ -22,33 +22,61 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Extract (ident, type) pairs from inside the parentheses
     let mut params = Vec::<Parameter>::new();
     {
-        // Lift the TokenStream out so it lives long enough
-        let params_ts: TokenStream2 = paren.to_token_stream();
+        // Access the inner Group and get its stream
+        let inner_group = &paren.0; // ParenthesisGroup(Group)
+        let params_ts: TokenStream2 = inner_group.stream().into();
+        eprintln!("Parameter inner tokens: {}", params_ts);
         let mut pit = params_ts.to_token_iter();
 
         loop {
             // Try parsing an identifier
             let name = match Ident::parse(&mut pit) {
-                Ok(id) => id,
-                Err(_) => break,
+                Ok(id) => {
+                    eprintln!("Found identifier: {}", id);
+                    id
+                }
+                Err(e) => {
+                    eprintln!("Failed to parse identifier: {:?}", e);
+                    break;
+                }
             };
             // Expect and consume the colon
-            let _ = Operator::<':'>::parse(&mut pit).unwrap();
+            if Operator::<':'>::parse(&mut pit).is_err() {
+                eprintln!("Failed to find ':' after parameter name {}", name);
+                break;
+            }
+            eprintln!("Found colon after {}", name);
             // Collect type tokens until comma or end
             let mut ty = TokenStream2::new();
-            while let Ok(tt) = TokenTree::parse(&mut pit) {
-                if let TokenTree::Punct(p) = &tt {
-                    if p.as_char() == ',' {
+            loop {
+                match TokenTree::parse(&mut pit) {
+                    Ok(tt) => {
+                        if let TokenTree::Punct(p) = &tt {
+                            if p.as_char() == ',' {
+                                eprintln!("Found comma, stopping type collection");
+                                break;
+                            }
+                        }
+                        eprintln!("Adding token to type: {:?}", tt);
+                        tt.to_tokens(&mut ty);
+                    }
+                    Err(e) => {
+                        eprintln!("End of tokens while parsing type: {:?}", e);
                         break;
                     }
                 }
-                tt.to_tokens(&mut ty);
             }
-            params.push(Parameter { name, param_type: ty });
+            eprintln!("Found parameter: {} : {}", name, ty);
+            params.push(Parameter {
+                name,
+                param_type: ty,
+            });
             // Consume optional comma
             let _ = Operator::<','>::parse(&mut pit);
         }
     }
+
+    eprintln!("Total parameters found: {}", params.len());
 
     // Parse `-> RetType` if present
     let mut ret = quote! { () };
@@ -65,19 +93,28 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Generate the wrapper + metadata
     let hidden_mod = Ident::new(&format!("__fn_shape_{}", fn_name), Span::call_site());
-    let defs: Vec<_> = params.iter().map(|p| {
-        let name = &p.name;
-        let ty = &p.param_type;
-        quote! { #name: #ty }
-    }).collect();
-    let idents: Vec<_> = params.iter().map(|p| {
-        let name = &p.name;
-        quote! { #name }
-    }).collect();
-    let types: Vec<_> = params.iter().map(|p| {
-        let ty = &p.param_type;
-        quote! { #ty }
-    }).collect();
+    let defs: Vec<_> = params
+        .iter()
+        .map(|p| {
+            let name = &p.name;
+            let ty = &p.param_type;
+            quote! { #name: #ty }
+        })
+        .collect();
+    let idents: Vec<_> = params
+        .iter()
+        .map(|p| {
+            let name = &p.name;
+            quote! { #name }
+        })
+        .collect();
+    let types: Vec<_> = params
+        .iter()
+        .map(|p| {
+            let ty = &p.param_type;
+            quote! { #ty }
+        })
+        .collect();
     let names: Vec<_> = params
         .iter()
         .map(|p| p.name.to_string())
@@ -132,6 +169,9 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
         // 3) Re-export the constant so users can do `add::SHAPE`
         pub use #hidden_mod::SHAPE;
     };
+
+    // Debug: print what we're generating
+    eprintln!("Generated code: {}", out);
 
     out.into()
 }

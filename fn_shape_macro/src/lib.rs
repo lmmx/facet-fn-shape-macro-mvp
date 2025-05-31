@@ -61,18 +61,48 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
         }
     }
 
-    // Parse `-> RetType` if present
+    // Parse `-> RetType` if present, and then parse the body
     let mut ret = quote! { () };
-    if Operator::<'-', '>'>::parse(&mut it).is_ok() {
-        if let Ok(tt) = TokenTree::parse(&mut it) {
-            ret = quote! { #tt };
+    let body_ts = if Operator::<'-', '>'>::parse(&mut it).is_ok() {
+        // Collect return type tokens until we hit a brace group
+        let mut return_tokens = TokenStream2::new();
+        let mut body_group = None;
+        
+        loop {
+            match TokenTree::parse(&mut it) {
+                Ok(token) => {
+                    if let TokenTree::Group(ref g) = token {
+                        if g.delimiter() == proc_macro2::Delimiter::Brace {
+                            // This is the function body
+                            body_group = Some(g.clone());
+                            break;
+                        }
+                    }
+                    token.to_tokens(&mut return_tokens);
+                }
+                Err(_) => break,
+            }
         }
-    }
-
-    // Parse the function body `{ ... }`
-    let body_grp = BraceGroup::parse(&mut it).expect("expected `{ ... }` body");
-    let mut body_ts = TokenStream2::new();
-    body_grp.to_tokens(&mut body_ts);
+        
+        if !return_tokens.is_empty() {
+            ret = return_tokens;
+        }
+        
+        // Convert the Group to TokenStream2
+        body_group.map(|g| {
+            let mut ts = TokenStream2::new();
+            TokenTree::Group(g).to_tokens(&mut ts);
+            ts
+        }).unwrap_or_else(|| {
+            panic!("expected function body after return type");
+        })
+    } else {
+        // No return type, parse body directly
+        let body_grp = BraceGroup::parse(&mut it).expect("expected `{ ... }` body");
+        let mut body_ts = TokenStream2::new();
+        body_grp.to_tokens(&mut body_ts);
+        body_ts
+    };
 
     // Generate the wrapper + metadata
     let hidden_mod = Ident::new(&format!("__fn_shape_{}", fn_name), Span::call_site());

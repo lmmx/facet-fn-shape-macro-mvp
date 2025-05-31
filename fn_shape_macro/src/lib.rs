@@ -5,9 +5,9 @@ use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
 use unsynn::*;
 
-/// `#[fn_shape] fn foo(...) -> R { ... }`
+/// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
-pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Convert to proc_macro2 for parsing
     let item2: TokenStream2 = item.into();
     let mut it = item2.to_token_iter();
@@ -25,27 +25,18 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
         // Access the inner Group and get its stream
         let inner_group = &paren.0; // ParenthesisGroup(Group)
         let params_ts: TokenStream2 = inner_group.stream().into();
-        eprintln!("Parameter inner tokens: {}", params_ts);
         let mut pit = params_ts.to_token_iter();
 
         loop {
             // Try parsing an identifier
             let name = match Ident::parse(&mut pit) {
-                Ok(id) => {
-                    eprintln!("Found identifier: {}", id);
-                    id
-                }
-                Err(e) => {
-                    eprintln!("Failed to parse identifier: {:?}", e);
-                    break;
-                }
+                Ok(id) => id,
+                Err(_) => break,
             };
             // Expect and consume the colon
             if Operator::<':'>::parse(&mut pit).is_err() {
-                eprintln!("Failed to find ':' after parameter name {}", name);
                 break;
             }
-            eprintln!("Found colon after {}", name);
             // Collect type tokens until comma or end
             let mut ty = TokenStream2::new();
             loop {
@@ -53,20 +44,14 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     Ok(tt) => {
                         if let TokenTree::Punct(p) = &tt {
                             if p.as_char() == ',' {
-                                eprintln!("Found comma, stopping type collection");
                                 break;
                             }
                         }
-                        eprintln!("Adding token to type: {:?}", tt);
                         tt.to_tokens(&mut ty);
                     }
-                    Err(e) => {
-                        eprintln!("End of tokens while parsing type: {:?}", e);
-                        break;
-                    }
+                    Err(_) => break,
                 }
             }
-            eprintln!("Found parameter: {} : {}", name, ty);
             params.push(Parameter {
                 name,
                 param_type: ty,
@@ -75,8 +60,6 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let _ = Operator::<','>::parse(&mut pit);
         }
     }
-
-    eprintln!("Total parameters found: {}", params.len());
 
     // Parse `-> RetType` if present
     let mut ret = quote! { () };
@@ -93,6 +76,7 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     // Generate the wrapper + metadata
     let hidden_mod = Ident::new(&format!("__fn_shape_{}", fn_name), Span::call_site());
+    let shape_name = Ident::new(&format!("{}_SHAPE", fn_name.to_string().to_uppercase()), Span::call_site());
     let defs: Vec<_> = params
         .iter()
         .map(|p| {
@@ -166,13 +150,26 @@ pub fn fn_shape(_attr: TokenStream, item: TokenStream) -> TokenStream {
             #hidden_mod::inner( #( #idents ),* )
         }
 
-        // 3) Re-export the constant so users can do `add::SHAPE`
-        pub use #hidden_mod::SHAPE;
+        // 3) Re-export the constant with function name
+        pub use #hidden_mod::SHAPE as #shape_name;
     };
 
-    // Debug: print what we're generating
-    eprintln!("Generated code: {}", out);
+    out.into()
+}
 
+/// `fn_shape!(function_name)` - Access the shape metadata for a function
+#[proc_macro]
+pub fn fn_shape(input: TokenStream) -> TokenStream {
+    let input2: TokenStream2 = input.into();
+    let mut tokens = input2.to_token_iter();
+    
+    // Parse the function name
+    let fn_name = Ident::parse(&mut tokens).expect("expected function name");
+    
+    // Generate the shape constant name
+    let shape_name = Ident::new(&format!("{}_SHAPE", fn_name.to_string().to_uppercase()), Span::call_site());
+    
+    let out = quote! { #shape_name };
     out.into()
 }
 

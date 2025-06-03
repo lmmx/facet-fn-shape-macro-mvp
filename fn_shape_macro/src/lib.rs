@@ -3,7 +3,6 @@ extern crate proc_macro;
 use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
-use unsynn::*;
 
 mod func_params;
 
@@ -15,6 +14,9 @@ mod func_body;
 
 mod func_sig;
 use func_sig::parse_function_signature;
+
+mod fn_shape_input;
+use fn_shape_input::parse_fn_shape_input;
 
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
@@ -138,40 +140,9 @@ fn generate_function_shape(parsed: func_sig::ParsedFunctionSignature) -> TokenSt
 #[proc_macro]
 pub fn fn_shape(input: TokenStream) -> TokenStream {
     let input2: TokenStream2 = input.into();
-    let mut tokens = input2.to_token_iter();
-
-    // Parse the function name
-    let fn_name = Ident::parse(&mut tokens).expect("expected function name");
-
-    // Check if there are generic arguments
-    let generic_args = if let Ok(TokenTree::Punct(p)) = TokenTree::parse(&mut tokens) {
-        if p.as_char() == '<' {
-            // Collect generic arguments
-            let mut generic_tokens = TokenStream2::new();
-            p.to_tokens(&mut generic_tokens);
-
-            let mut depth = 1;
-            while depth > 0 {
-                if let Ok(token) = TokenTree::parse(&mut tokens) {
-                    if let TokenTree::Punct(punct) = &token {
-                        match punct.as_char() {
-                            '<' => depth += 1,
-                            '>' => depth -= 1,
-                            _ => {}
-                        }
-                    }
-                    token.to_tokens(&mut generic_tokens);
-                } else {
-                    break;
-                }
-            }
-            Some(generic_tokens)
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let parsed = parse_fn_shape_input(input2);
+    let fn_name = parsed.name;
+    let generic_args = parsed.generics;
 
     // Generate the shape function name
     let shape_name = Ident::new(

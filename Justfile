@@ -1,4 +1,5 @@
 default: run test
+precommit: default
 
 [working-directory: 'macro_test']
 run:

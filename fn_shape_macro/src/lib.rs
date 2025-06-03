@@ -8,6 +8,9 @@ use unsynn::*;
 mod func_params;
 use func_params::{Parameter, parse_fn_parameters};
 
+mod ret_type;
+use ret_type::parse_return_type;
+
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
 pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -90,35 +93,7 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     // Check for return type
-    let ret = if pos < all_remaining.len() - 1 {
-        // -1 because last should be brace
-        if let (TokenTree::Punct(p1), TokenTree::Punct(p2)) =
-            (&all_remaining[pos], &all_remaining[pos + 1])
-        {
-            if p1.as_char() == '-' && p2.as_char() == '>' {
-                // Found return type, collect until brace
-                pos += 2; // skip '->'
-                let mut ret_tokens = TokenStream2::new();
-                while pos < all_remaining.len() {
-                    let token = &all_remaining[pos];
-                    if let TokenTree::Group(group) = token {
-                        if group.delimiter() == proc_macro2::Delimiter::Brace {
-                            break;
-                        }
-                    }
-                    token.to_tokens(&mut ret_tokens);
-                    pos += 1;
-                }
-                ret_tokens
-            } else {
-                quote! { () }
-            }
-        } else {
-            quote! { () }
-        }
-    } else {
-        quote! { () }
-    };
+    let ret = parse_return_type(all_remaining[pos..all_remaining.len() - 1].to_vec());
 
     // Parse the function body - should be the last brace group
     let body_ts = {

@@ -11,6 +11,9 @@ use func_params::{Parameter, parse_fn_parameters};
 mod ret_type;
 use ret_type::parse_return_type;
 
+mod generics;
+use generics::parse_generics;
+
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
 pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -27,43 +30,8 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut pos = 0;
 
     // Check for generics
-    let generics = if pos < all_remaining.len() {
-        if let TokenTree::Punct(p) = &all_remaining[pos] {
-            if p.as_char() == '<' {
-                // Found generics, collect them
-                let mut generic_tokens = TokenStream2::new();
-                let mut depth = 0;
-
-                while pos < all_remaining.len() {
-                    let token = &all_remaining[pos];
-                    if let TokenTree::Punct(punct) = token {
-                        match punct.as_char() {
-                            '<' => depth += 1,
-                            '>' => {
-                                depth -= 1;
-                                token.to_tokens(&mut generic_tokens);
-                                pos += 1;
-                                if depth == 0 {
-                                    break;
-                                }
-                                continue;
-                            }
-                            _ => {}
-                        }
-                    }
-                    token.to_tokens(&mut generic_tokens);
-                    pos += 1;
-                }
-                Some(generic_tokens)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    } else {
-        None
-    };
+    let (generics, generics_consumed) = parse_generics(&all_remaining[pos..]);
+    pos += generics_consumed;
 
     // Find and parse the parameter list
     let paren_pos = {

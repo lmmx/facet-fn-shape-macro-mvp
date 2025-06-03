@@ -14,6 +14,9 @@ use ret_type::parse_return_type;
 mod generics;
 use generics::parse_generics;
 
+mod func_body;
+use func_body::parse_function_body;
+
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
 pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -64,15 +67,7 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let ret = parse_return_type(all_remaining[pos..all_remaining.len() - 1].to_vec());
 
     // Parse the function body - should be the last brace group
-    let body_ts = {
-        let mut body_tokens = TokenStream2::new();
-        if let Some(TokenTree::Group(group)) = all_remaining.last() {
-            if group.delimiter() == proc_macro2::Delimiter::Brace {
-                TokenTree::Group(group.clone()).to_tokens(&mut body_tokens);
-            }
-        }
-        body_tokens
-    };
+    let body_ts = parse_function_body(&all_remaining);
 
     generate_function_shape(fn_name, params, generics, ret, body_ts)
 }

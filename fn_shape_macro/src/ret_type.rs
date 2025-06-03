@@ -19,7 +19,7 @@ unsynn! {
 pub fn parse_return_type(tokens: Vec<TokenTree>) -> TokenStream {
     let mut token_stream = TokenStream::new();
     for token in &tokens {
-        token_stream.extend(std::iter::once(token.clone()));
+        token_stream.extend(core::iter::once(token.clone()));
     }
 
     let mut it = token_stream.to_token_iter();

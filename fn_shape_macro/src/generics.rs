@@ -26,18 +26,18 @@ pub fn parse_generics(tokens: &[TokenTree]) -> (Option<TokenStream>, usize) {
     if tokens.is_empty() {
         return (None, 0);
     }
-    
+
     // Check if first token is '<'
     if let TokenTree::Punct(p) = &tokens[0] {
         if p.as_char() == '<' {
             // Convert tokens to TokenStream for parsing
             let mut token_stream = TokenStream::new();
             for token in tokens {
-                token_stream.extend(std::iter::once(token.clone()));
+                token_stream.extend(core::iter::once(token.clone()));
             }
-            
+
             let mut it = token_stream.to_token_iter();
-            
+
             match it.parse::<GenericParams>() {
                 Ok(generics) => {
                     // Calculate how many tokens were consumed
@@ -91,7 +91,10 @@ mod tests {
         let input: Vec<TokenTree> = quote! { <T: Add<Output = T>> }.into_iter().collect();
         let (generics, _consumed) = parse_generics(&input);
         assert!(generics.is_some());
-        assert_eq!(generics.unwrap().to_string().trim(), "< T : Add < Output = T > >");
+        assert_eq!(
+            generics.unwrap().to_string().trim(),
+            "< T : Add < Output = T > >"
+        );
     }
 
     #[test]

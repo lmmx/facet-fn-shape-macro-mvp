@@ -5,6 +5,9 @@ use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
 use unsynn::*;
 
+mod func_params;
+use func_params::{Parameter, parse_fn_parameters};
+
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
 pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -83,7 +86,7 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Parse parameters
     let params = {
         let params_ts: TokenStream2 = paren_group.stream();
-        extract_parameters_from_stream(params_ts)
+        parse_fn_parameters(params_ts)
     };
 
     // Check for return type
@@ -131,46 +134,6 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     generate_function_shape(fn_name, params, generics, ret, body_ts)
 }
 
-fn extract_parameters_from_stream(params_ts: TokenStream2) -> Vec<Parameter> {
-    let mut pit = params_ts.to_token_iter();
-    let mut parameters = Vec::new();
-
-    loop {
-        // Try parsing an identifier
-        let name = match Ident::parse(&mut pit) {
-            Ok(id) => id,
-            Err(_) => break,
-        };
-        // Expect and consume the colon
-        if Operator::<':'>::parse(&mut pit).is_err() {
-            break;
-        }
-        // Collect type tokens until comma or end
-        let mut ty = TokenStream2::new();
-        loop {
-            match TokenTree::parse(&mut pit) {
-                Ok(tt) => {
-                    if let TokenTree::Punct(p) = &tt {
-                        if p.as_char() == ',' {
-                            break;
-                        }
-                    }
-                    tt.to_tokens(&mut ty);
-                }
-                Err(_) => break,
-            }
-        }
-        parameters.push(Parameter {
-            name,
-            param_type: ty,
-        });
-        // Consume optional comma
-        let _ = Operator::<','>::parse(&mut pit);
-    }
-
-    parameters
-}
-
 fn generate_function_shape(
     fn_name: Ident,
     params: Vec<Parameter>,
@@ -187,7 +150,7 @@ fn generate_function_shape(
         .iter()
         .map(|p| {
             let name = &p.name;
-            let ty = &p.param_type;
+            let ty = &p.param_type_tokens();
             quote! { #name: #ty }
         })
         .collect();
@@ -201,7 +164,7 @@ fn generate_function_shape(
     let types: Vec<_> = params
         .iter()
         .map(|p| {
-            let ty = &p.param_type;
+            let ty = &p.param_type_tokens();
             quote! { #ty }
         })
         .collect();
@@ -331,9 +294,4 @@ pub fn fn_shape(input: TokenStream) -> TokenStream {
         quote! { #shape_name() }
     };
     out.into()
-}
-
-struct Parameter {
-    name: Ident,
-    param_type: TokenStream2,
 }

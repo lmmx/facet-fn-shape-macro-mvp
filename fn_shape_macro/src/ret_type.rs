@@ -1,3 +1,4 @@
+#[cfg(test)]
 use proc_macro2::TokenStream;
 use unsynn::*;
 
@@ -16,6 +17,7 @@ unsynn! {
 
 /// Parse return type from tokens after parameters
 /// Returns the return type as TokenStream, or unit type () if no return type found
+#[cfg(test)]
 pub fn parse_return_type(tokens: Vec<TokenTree>) -> TokenStream {
     let mut token_stream = TokenStream::new();
     for token in &tokens {

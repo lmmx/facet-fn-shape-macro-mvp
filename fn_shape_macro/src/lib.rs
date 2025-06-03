@@ -6,68 +6,29 @@ use quote::quote;
 use unsynn::*;
 
 mod func_params;
-use func_params::{Parameter, parse_fn_parameters};
+use func_params::Parameter;
 
 mod ret_type;
-use ret_type::parse_return_type;
 
 mod generics;
-use generics::parse_generics;
 
 mod func_body;
-use func_body::parse_function_body;
+
+mod func_sig;
+use func_sig::parse_function_signature;
 
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
 pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Convert to proc_macro2 for parsing
     let item2: TokenStream2 = item.into();
-    let mut it = item2.to_token_iter();
+    let parsed = parse_function_signature(item2);
 
-    // Parse `fn` and the function name
-    let _ = Ident::parse(&mut it).expect("expected `fn` keyword");
-    let fn_name = Ident::parse(&mut it).expect("expected function name");
-
-    // Simple approach: collect all remaining tokens and parse manually
-    let all_remaining: Vec<TokenTree> = it.collect();
-    let mut pos = 0;
-
-    // Check for generics
-    let (generics, generics_consumed) = parse_generics(&all_remaining[pos..]);
-    pos += generics_consumed;
-
-    // Find and parse the parameter list
-    let paren_pos = {
-        let mut found_pos = None;
-        for (i, token) in all_remaining[pos..].iter().enumerate() {
-            if let TokenTree::Group(group) = token {
-                if group.delimiter() == proc_macro2::Delimiter::Parenthesis {
-                    found_pos = Some(pos + i);
-                    break;
-                }
-            }
-        }
-        found_pos.expect("expected parameter list")
-    };
-
-    let paren_group = if let TokenTree::Group(group) = &all_remaining[paren_pos] {
-        group.clone()
-    } else {
-        panic!("expected parenthesis group");
-    };
-    pos = paren_pos + 1;
-
-    // Parse parameters
-    let params = {
-        let params_ts: TokenStream2 = paren_group.stream();
-        parse_fn_parameters(params_ts)
-    };
-
-    // Check for return type
-    let ret = parse_return_type(all_remaining[pos..all_remaining.len() - 1].to_vec());
-
-    // Parse the function body - should be the last brace group
-    let body_ts = parse_function_body(&all_remaining);
+    let fn_name = parsed.name;
+    let generics = parsed.generics;
+    let params = parsed.parameters;
+    let ret = parsed.return_type;
+    let body_ts = parsed.body;
 
     generate_function_shape(fn_name, params, generics, ret, body_ts)
 }

@@ -1,3 +1,4 @@
+#[cfg(test)]
 use proc_macro2::TokenStream;
 use unsynn::*;
 
@@ -16,6 +17,7 @@ unsynn! {
 
 /// Parse function body from tokens using declarative parsing
 /// Returns the function body as TokenStream
+#[cfg(test)]
 pub fn parse_function_body(tokens: &[TokenTree]) -> TokenStream {
     // Convert tokens to TokenStream for parsing
     let mut token_stream = TokenStream::new();

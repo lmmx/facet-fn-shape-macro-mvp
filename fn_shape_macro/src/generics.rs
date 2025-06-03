@@ -1,3 +1,4 @@
+#[cfg(test)]
 use proc_macro2::TokenStream;
 use unsynn::*;
 
@@ -22,6 +23,7 @@ unsynn! {
 
 /// Parse generics from token slice starting at given position
 /// Returns (Option<TokenStream>, tokens_consumed)
+#[cfg(test)]
 pub fn parse_generics(tokens: &[TokenTree]) -> (Option<TokenStream>, usize) {
     if tokens.is_empty() {
         return (None, 0);

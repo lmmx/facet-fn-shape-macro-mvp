@@ -2,59 +2,42 @@
 use proc_macro2::TokenStream;
 use unsynn::*;
 
+/// Parses tokens until `C` is found on the current token tree level.
+pub type VerbatimUntil<C> = Many<Cons<Except<C>, AngleTokenTree>>;
+
 unsynn! {
     /// Parses either a `TokenTree` or `<...>` grouping (which is not a [`Group`] as far as proc-macros
     /// are concerned).
     #[derive(Clone)]
     pub struct AngleTokenTree(
+        #[allow(clippy::type_complexity)] // look,
         pub Either<Cons<Lt, Vec<Cons<Except<Gt>, AngleTokenTree>>, Gt>, TokenTree>,
     );
+
+    /// A generic type parameter with name and optional bounds
+    pub struct TypeParam {
+        /// Type parameter name
+        pub name: Ident,
+        /// Optional colon and bounds (e.g., ": Clone + Send")
+        pub bounds: Option<Cons<Colon, VerbatimUntil<Either<Comma,Gt>>>>,
+    }
 
     /// Generic parameters with angle brackets
     pub struct GenericParams {
         /// Opening angle bracket
         pub _lt: Lt,
-        /// Generic parameters content
-        pub params: Vec<Cons<Except<Gt>, AngleTokenTree>>,
+        /// Comma-delimited list of generic parameters
+        pub params: CommaDelimitedVec<TypeParam>,
         /// Closing angle bracket
         pub _gt: Gt,
     }
 }
 
-/// Parse generics from token slice starting at given position
-/// Returns (Option<TokenStream>, tokens_consumed)
+/// Parse generics from TokenStream
 #[cfg(test)]
-pub fn parse_generics(tokens: &[TokenTree]) -> (Option<TokenStream>, usize) {
-    if tokens.is_empty() {
-        return (None, 0);
-    }
-
-    // Check if first token is '<'
-    if let TokenTree::Punct(p) = &tokens[0] {
-        if p.as_char() == '<' {
-            // Convert tokens to TokenStream for parsing
-            let mut token_stream = TokenStream::new();
-            for token in tokens {
-                token_stream.extend(core::iter::once(token.clone()));
-            }
-
-            let mut it = token_stream.to_token_iter();
-
-            match it.parse::<GenericParams>() {
-                Ok(generics) => {
-                    // Calculate how many tokens were consumed
-                    let consumed = 1 + generics.params.len() + 1; // < + params + >
-                    let generics_tokens = generics.to_token_stream();
-                    (Some(generics_tokens), consumed)
-                }
-                Err(_) => (None, 0),
-            }
-        } else {
-            (None, 0)
-        }
-    } else {
-        (None, 0)
-    }
+pub fn parse_generics_for_test(input: TokenStream) -> Option<GenericParams> {
+    let mut it = input.to_token_iter();
+    it.parse::<GenericParams>().ok()
 }
 
 #[cfg(test)]
@@ -64,47 +47,56 @@ mod tests {
 
     #[test]
     fn test_no_generics() {
-        let input: Vec<TokenTree> = quote! { fn_name() }.into_iter().collect();
-        let (generics, consumed) = parse_generics(&input);
+        let input = quote! { fn_name() };
+        let generics = parse_generics_for_test(input);
         assert!(generics.is_none());
-        assert_eq!(consumed, 0);
     }
 
     #[test]
     fn test_simple_generics() {
-        let input: Vec<TokenTree> = quote! { <T> }.into_iter().collect();
-        let (generics, consumed) = parse_generics(&input);
-        assert!(generics.is_some());
-        assert_eq!(consumed, 3); // <, T, >
-        assert_eq!(generics.unwrap().to_string().trim(), "< T >");
+        let input = quote! { <T> };
+        let generics = parse_generics_for_test(input).expect("should parse");
+        assert_eq!(generics.params.0.len(), 1);
+        assert_eq!(generics.params.0[0].value.name.to_string(), "T");
+        assert!(generics.params.0[0].value.bounds.is_none());
     }
 
     #[test]
     fn test_multiple_generics() {
-        let input: Vec<TokenTree> = quote! { <T, U: Clone> }.into_iter().collect();
-        let (generics, consumed) = parse_generics(&input);
-        assert!(generics.is_some());
-        assert_eq!(consumed, 7); // <, T, ,, U, :, Clone, >
-        assert_eq!(generics.unwrap().to_string().trim(), "< T , U : Clone >");
+        let input = quote! { <T, U, V> };
+        let generics = parse_generics_for_test(input).expect("should parse");
+        assert_eq!(generics.params.0.len(), 3);
+        assert_eq!(generics.params.0[0].value.name.to_string(), "T");
+        assert_eq!(generics.params.0[1].value.name.to_string(), "U");
+        assert_eq!(generics.params.0[2].value.name.to_string(), "V");
+    }
+
+    #[test]
+    fn test_generics_with_bounds() {
+        let input = quote! { <T: Clone, U: Send> };
+        let generics = parse_generics_for_test(input).expect("should parse");
+        assert_eq!(generics.params.0.len(), 2);
+        assert_eq!(generics.params.0[0].value.name.to_string(), "T");
+        assert!(generics.params.0[0].value.bounds.is_some());
+        assert_eq!(generics.params.0[1].value.name.to_string(), "U");
+        assert!(generics.params.0[1].value.bounds.is_some());
     }
 
     #[test]
     fn test_complex_generics() {
-        let input: Vec<TokenTree> = quote! { <T: Add<Output = T>> }.into_iter().collect();
-        let (generics, _consumed) = parse_generics(&input);
-        assert!(generics.is_some());
-        assert_eq!(
-            generics.unwrap().to_string().trim(),
-            "< T : Add < Output = T > >"
-        );
+        let input = quote! { <T: Add<Output = T>, U: Iterator<Item = String>> };
+        let generics = parse_generics_for_test(input).expect("should parse");
+        assert_eq!(generics.params.0.len(), 2);
+        assert_eq!(generics.params.0[0].value.name.to_string(), "T");
+        assert_eq!(generics.params.0[1].value.name.to_string(), "U");
+        assert!(generics.params.0[0].value.bounds.is_some());
+        assert!(generics.params.0[1].value.bounds.is_some());
     }
 
     #[test]
-    fn test_generics_with_following_tokens() {
-        let input: Vec<TokenTree> = quote! { <T> (x: T) }.into_iter().collect();
-        let (generics, consumed) = parse_generics(&input);
-        assert!(generics.is_some());
-        assert_eq!(consumed, 3); // Only consumes <T>
-        assert_eq!(generics.unwrap().to_string().trim(), "< T >");
+    fn test_empty_generics() {
+        let input = quote! { <> };
+        let generics = parse_generics_for_test(input).expect("should parse");
+        assert_eq!(generics.params.0.len(), 0);
     }
 }

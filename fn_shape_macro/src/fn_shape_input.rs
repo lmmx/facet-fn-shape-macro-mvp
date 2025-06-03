@@ -23,12 +23,12 @@ pub struct ParsedFnShapeInput {
 /// Parse fn_shape! macro input from TokenStream
 pub fn parse_fn_shape_input(input: TokenStream) -> ParsedFnShapeInput {
     let mut it = input.to_token_iter();
-    
+
     match it.parse::<FnShapeInput>() {
         Ok(shape_input) => {
             let name = shape_input.name;
             let generics = shape_input.generics.map(|g| g.to_token_stream());
-            
+
             ParsedFnShapeInput { name, generics }
         }
         Err(err) => {
@@ -61,11 +61,20 @@ mod tests {
 
     #[test]
     fn test_function_with_multiple_generics() {
-        let input = quote! { complex_fn<T, U: Clone> };
+        let input = quote! { multi_ty_param_fn<T, U> };
         let parsed = parse_fn_shape_input(input);
-        assert_eq!(parsed.name.to_string(), "complex_fn");
+        assert_eq!(parsed.name.to_string(), "multi_ty_param_fn");
         assert!(parsed.generics.is_some());
-        assert_eq!(parsed.generics.unwrap().to_string().trim(), "< T , U : Clone >");
+        assert_eq!(parsed.generics.unwrap().to_string().trim(), "< T , U >");
+    }
+
+    #[test]
+    fn test_function_with_bounded_generics() {
+        let input = quote! { bounded_fn<U: Clone> };
+        let parsed = parse_fn_shape_input(input);
+        assert_eq!(parsed.name.to_string(), "bounded_fn");
+        assert!(parsed.generics.is_some());
+        assert_eq!(parsed.generics.unwrap().to_string().trim(), "< U : Clone >");
     }
 
     #[test]
@@ -74,6 +83,9 @@ mod tests {
         let parsed = parse_fn_shape_input(input);
         assert_eq!(parsed.name.to_string(), "nested_fn");
         assert!(parsed.generics.is_some());
-        assert_eq!(parsed.generics.unwrap().to_string().trim(), "< T : Add < Output = T > >");
+        assert_eq!(
+            parsed.generics.unwrap().to_string().trim(),
+            "< T : Add < Output = T > >"
+        );
     }
 }

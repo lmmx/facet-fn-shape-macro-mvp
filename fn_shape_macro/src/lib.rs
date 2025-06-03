@@ -18,6 +18,9 @@ use func_sig::parse_function_signature;
 mod fn_shape_input;
 use fn_shape_input::parse_fn_shape_input;
 
+mod type_params;
+use type_params::extract_type_params;
+
 /// `#[facet_fn] fn foo(...) -> R { ... }`
 #[proc_macro_attribute]
 pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -68,11 +71,9 @@ fn generate_function_shape(parsed: func_sig::ParsedFunctionSignature) -> TokenSt
     let arity = params.len();
     let fn_name_str = fn_name.to_string();
 
-    // Always use a function approach - it works for both generic and non-generic
-    let generics_type = if generics.is_some() {
-        // For generic functions, try to extract just the type parameters for PhantomData
-        // This is a simplified approach - we'll use the first type parameter
-        quote! { T } // This assumes single generic - could be improved
+    // Extract  type parameters for PhantomData using unsynn parsing
+    let generics_type = if let Some(ref generics_ts) = generics {
+        extract_type_params(generics_ts.clone())
     } else {
         quote! { () }
     };

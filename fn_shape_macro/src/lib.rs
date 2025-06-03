@@ -4,13 +4,10 @@ use proc_macro::TokenStream;
 use proc_macro2::{Ident, Span, TokenStream as TokenStream2};
 use quote::quote;
 
-mod func_params;
-
-mod ret_type;
-
-mod generics;
-
 mod func_body;
+mod func_params;
+mod generics;
+mod ret_type;
 
 mod func_sig;
 use func_sig::parse_function_signature;

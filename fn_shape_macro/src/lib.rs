@@ -6,7 +6,6 @@ use quote::quote;
 use unsynn::*;
 
 mod func_params;
-use func_params::Parameter;
 
 mod ret_type;
 
@@ -23,23 +22,16 @@ pub fn facet_fn(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // Convert to proc_macro2 for parsing
     let item2: TokenStream2 = item.into();
     let parsed = parse_function_signature(item2);
+    generate_function_shape(parsed)
+}
 
+fn generate_function_shape(parsed: func_sig::ParsedFunctionSignature) -> TokenStream {
     let fn_name = parsed.name;
     let generics = parsed.generics;
     let params = parsed.parameters;
-    let ret = parsed.return_type;
-    let body_ts = parsed.body;
+    let return_type = parsed.return_type;
+    let body = parsed.body;
 
-    generate_function_shape(fn_name, params, generics, ret, body_ts)
-}
-
-fn generate_function_shape(
-    fn_name: Ident,
-    params: Vec<Parameter>,
-    generics: Option<TokenStream2>,
-    return_type: TokenStream2,
-    body: TokenStream2,
-) -> TokenStream {
     let hidden_mod = Ident::new(&format!("__fn_shape_{}", fn_name), Span::call_site());
     let shape_name = Ident::new(
         &format!("{}_SHAPE", fn_name.to_string().to_uppercase()),
